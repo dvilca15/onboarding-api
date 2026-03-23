@@ -161,6 +161,40 @@ class TaskProgressResponse(BaseModel):
         from_attributes = True
 
 
+
+# ── Task Progress con detalle del step (para vista agrupada) ──
+
+class TaskProgressConDetalle(BaseModel):
+    """Task progress enriquecido con datos de la task."""
+    id_task_progress:       int
+    id_task:                int
+    id_step:                int
+    estado:                 str
+    fecha_completada:       Optional[datetime]
+    titulo:                 str
+    tipo:                   str
+    obligatorio:            bool
+    orden:                  int
+
+    class Config:
+        from_attributes = True
+
+
+class StepConProgreso(BaseModel):
+    """Step con sus tasks y progreso calculado."""
+    id_step:        int
+    titulo:         str
+    descripcion:    Optional[str]
+    orden:          int
+    duracion_dias:  Optional[int]
+    tasks:          List[TaskProgressConDetalle] = []
+    total_tasks:    int = 0
+    completadas:    int = 0
+
+    class Config:
+        from_attributes = True
+
+
 # ── Employee Onboarding ───────────────────────────────────────
 
 class AsignarPlanRequest(BaseModel):
@@ -177,14 +211,17 @@ class OnboardingResponse(BaseModel):
     fecha_inicio:           Optional[date]
     fecha_fin:              Optional[date]
     fecha_creacion:         datetime
+    # Campos enriquecidos para evitar N+1 en el frontend
+    nombre_empleado:        str = ""
+    nombre_plan:            str = ""
 
     class Config:
         from_attributes = True
 
 class OnboardingDetailResponse(OnboardingResponse):
-    """Onboarding con el detalle completo de progreso por task"""
-    nombre_empleado:    str = ""
-    nombre_plan:        str = ""
+    """Onboarding con el detalle completo de progreso, agrupado por step."""
+    steps_con_progreso: List[StepConProgreso] = []
+    # Mantenemos task_progresses para compatibilidad con otros endpoints
     task_progresses:    List[TaskProgressResponse] = []
 
     class Config:

@@ -7,7 +7,7 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Sistema de Onboarding para Mipymes",
-    description="API para gestión del proceso de onboarding de empleados",
+    description="API para gestion del proceso de onboarding de empleados",
     version="1.0.0"
 )
 
