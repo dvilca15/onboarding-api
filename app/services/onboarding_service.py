@@ -315,3 +315,14 @@ def completar_task(
         empleado.nombre if empleado else "",
         plan.nombre if plan else "",
     )
+
+def eliminar_onboarding(
+    id_onboarding: int,
+    current_user: AppUser,
+    roles: List[str],
+    db: Session
+) -> None:
+    onboarding = _get_onboarding(id_onboarding, db)
+    _verificar_acceso(onboarding, current_user, roles, db)
+    db.delete(onboarding)
+    db.commit()

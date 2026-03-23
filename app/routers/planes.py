@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
 from app.models import AppUser
-from app.schemas import PlanCreate, PlanUpdate, PlanResponse, PlanDetailResponse
+from app.schemas import PlanCreate, PlanUpdate, PlanResponse, PlanDetailResponse, UserResponse
 from app.dependencies import get_current_user, require_admin
 from app.services import plan_service
 
@@ -58,3 +58,12 @@ def eliminar_plan(
 ):
     """Elimina un plan. Solo ADMIN_EMPRESA."""
     plan_service.eliminar_plan(id_plan, current_user.empresa_id, db)
+
+@router.get("/{id_plan}/empleados")
+def listar_empleados_plan(
+    id_plan: int,
+    current_user: AppUser = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Lista los empleados asignados a este plan con su onboarding."""
+    return plan_service.listar_empleados_plan(id_plan, current_user.empresa_id, db)

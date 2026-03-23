@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session, joinedload
 from typing import List
-from app.models import OnboardingPlan, OnboardingStep, Task, AppUser
+from app.models import OnboardingPlan, OnboardingStep, Task, AppUser, EmployeeOnboarding
 from app.schemas import (
     PlanCreate, PlanUpdate, PlanResponse, PlanDetailResponse,
     StepCreate, StepUpdate, StepResponse,
@@ -231,3 +231,24 @@ def eliminar_task(
     task = _get_task(id_task, id_step, empresa_id, db)
     db.delete(task)
     db.commit()
+
+def listar_empleados_plan(id_plan: int, empresa_id: int, db: Session) -> list:
+    _get_plan(id_plan, empresa_id, db)
+    onboardings = (
+        db.query(EmployeeOnboarding)
+        .filter(EmployeeOnboarding.id_plan == id_plan)
+        .all()
+    )
+    resultado = []
+    for o in onboardings:
+        user = db.query(AppUser).filter(AppUser.id_user == o.id_user).first()
+        if user:
+            resultado.append({
+                "id_employee_onboarding": o.id_employee_onboarding,
+                "id_user": user.id_user,
+                "nombre": user.nombre,
+                "email": user.email,
+                "estado": o.estado,
+                "progreso": float(o.progreso),
+            })
+    return resultado
