@@ -7,6 +7,10 @@ from app.schemas import (
     TaskCreate, TaskUpdate, TaskResponse,
 )
 from app.exceptions import NotFoundError, ForbiddenError, BadRequestError
+from app.models import Task, TaskProgress, EmployeeOnboarding, OnboardingStep
+from app.schemas import BienvenidaResponse
+from app.exceptions import NotFoundError, ForbiddenError
+from datetime import datetime
 
 TIPOS_VALIDOS = ["DOCUMENTO", "VIDEO", "FORMULARIO", "CONFIRMACION"]
 
@@ -252,3 +256,149 @@ def listar_empleados_plan(id_plan: int, empresa_id: int, db: Session) -> list:
                 "progreso": float(o.progreso),
             })
     return resultado
+
+def actualizar_bienvenida(
+    id_plan: int,
+    mensaje: str | None,
+    empresa_id: int,
+    db
+) -> object:
+    """
+    Actualiza el mensaje de bienvenida del plan.
+    Si mensaje es None, lo elimina.
+    Si el plan tiene onboardings activos, también crea/elimina
+    la task BIENVENIDA en sus TaskProgress.
+    """
+    from app.models import OnboardingPlan
+    plan = db.query(OnboardingPlan).filter(
+        OnboardingPlan.id_plan == id_plan,
+        OnboardingPlan.id_empresa == empresa_id
+    ).first()
+    if not plan:
+        raise NotFoundError("Plan no encontrado")
+ 
+    plan.mensaje_bienvenida = mensaje
+ 
+    if mensaje:
+        # Buscar si ya existe un step de bienvenida
+        step_bienvenida = db.query(OnboardingStep).filter(
+            OnboardingStep.id_plan == id_plan,
+            OnboardingStep.titulo == "__BIENVENIDA__"
+        ).first()
+ 
+        if not step_bienvenida:
+            # Crear step oculto de bienvenida con orden 0
+            step_bienvenida = OnboardingStep(
+                id_plan=id_plan,
+                titulo="__BIENVENIDA__",
+                orden=999,
+                duracion_dias=None,
+            )
+            db.add(step_bienvenida)
+            db.flush()
+ 
+        # Buscar si ya existe la task de bienvenida
+        task_bienvenida = db.query(Task).filter(
+            Task.id_step == step_bienvenida.id_step,
+            Task.tipo == "BIENVENIDA"
+        ).first()
+ 
+        if not task_bienvenida:
+            task_bienvenida = Task(
+                id_step=step_bienvenida.id_step,
+                titulo="Leer mensaje de bienvenida",
+                tipo="BIENVENIDA",
+                obligatorio=True,
+                orden=1,
+            )
+            db.add(task_bienvenida)
+            db.flush()
+ 
+            # Crear TaskProgress PENDIENTE para todos los onboardings activos del plan
+            onboardings_activos = db.query(EmployeeOnboarding).filter(
+                EmployeeOnboarding.id_plan == id_plan,
+                EmployeeOnboarding.estado != "COMPLETADO"
+            ).all()
+            for ob in onboardings_activos:
+                existe = db.query(TaskProgress).filter(
+                    TaskProgress.id_employee_onboarding == ob.id_employee_onboarding,
+                    TaskProgress.id_task == task_bienvenida.id_task
+                ).first()
+                if not existe:
+                    db.add(TaskProgress(
+                        id_employee_onboarding=ob.id_employee_onboarding,
+                        id_task=task_bienvenida.id_task,
+                        estado="PENDIENTE",
+                    ))
+    else:
+        # Si se borra el mensaje, eliminar la task BIENVENIDA
+        step_bienvenida = db.query(OnboardingStep).filter(
+            OnboardingStep.id_plan == id_plan,
+            OnboardingStep.titulo == "__BIENVENIDA__"
+        ).first()
+        if step_bienvenida:
+            db.delete(step_bienvenida)  # cascade elimina tasks y task_progress
+ 
+    db.commit()
+    db.refresh(plan)
+    return plan
+ 
+ 
+def obtener_bienvenida(
+    id_plan: int,
+    id_onboarding: int,
+    empresa_id: int,
+    db
+) -> BienvenidaResponse:
+    """
+    Retorna el mensaje de bienvenida y si ya fue leído
+    por el empleado en este onboarding.
+    """
+    from app.models import OnboardingPlan
+    plan = db.query(OnboardingPlan).filter(
+        OnboardingPlan.id_plan == id_plan,
+        OnboardingPlan.id_empresa == empresa_id
+    ).first()
+    if not plan:
+        raise NotFoundError("Plan no encontrado")
+ 
+    if not plan.mensaje_bienvenida:
+        return BienvenidaResponse(
+            tiene_bienvenida=False,
+            mensaje=None,
+            id_task=None,
+            ya_leida=True,
+        )
+ 
+    # Buscar la task BIENVENIDA
+    task_bienvenida = (
+        db.query(Task)
+        .join(OnboardingStep, OnboardingStep.id_step == Task.id_step)
+        .filter(
+            OnboardingStep.id_plan == id_plan,
+            Task.tipo == "BIENVENIDA"
+        )
+        .first()
+    )
+    if not task_bienvenida:
+        return BienvenidaResponse(
+            tiene_bienvenida=True,
+            mensaje=plan.mensaje_bienvenida,
+            id_task=None,
+            ya_leida=True,
+        )
+ 
+    # Ver si ya la completó
+    tp = db.query(TaskProgress).filter(
+        TaskProgress.id_employee_onboarding == id_onboarding,
+        TaskProgress.id_task == task_bienvenida.id_task
+    ).first()
+ 
+    ya_leida = tp.estado == "COMPLETADO" if tp else False
+ 
+    return BienvenidaResponse(
+        tiene_bienvenida=True,
+        mensaje=plan.mensaje_bienvenida,
+        id_task=task_bienvenida.id_task,
+        ya_leida=ya_leida,
+    )

@@ -69,6 +69,7 @@ class OnboardingPlan(Base):
     nombre          = Column(String(150), nullable=False)
     descripcion     = Column(String(300))
     es_plantilla    = Column(Boolean, nullable=False, default=False)
+    mensaje_bienvenida  = Column(Text, nullable=True)
     fecha_creacion  = Column(DateTime, nullable=False, default=func.now())
     fecha_act       = Column(DateTime, nullable=False, default=func.now())
  

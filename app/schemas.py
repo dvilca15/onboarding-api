@@ -136,6 +136,7 @@ class PlanResponse(BaseModel):
     descripcion:    Optional[str]
     es_plantilla:   bool
     fecha_creacion: datetime
+    mensaje_bienvenida:     Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -229,3 +230,15 @@ class OnboardingDetailResponse(OnboardingResponse):
 
 class CompletarTaskRequest(BaseModel):
     estado: str = "COMPLETADO"
+
+
+# ── Bienvenida ────────────────────────────────────────────────
+
+class BienvenidaUpdate(BaseModel):
+    mensaje_bienvenida: Optional[str] = None
+
+class BienvenidaResponse(BaseModel):
+    tiene_bienvenida:   bool
+    mensaje:            Optional[str]
+    id_task:            Optional[int]
+    ya_leida:           bool

@@ -3,8 +3,11 @@ from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
 from app.models import AppUser
-from app.schemas import PlanCreate, PlanUpdate, PlanResponse, PlanDetailResponse, UserResponse
-from app.dependencies import get_current_user, require_admin
+from app.schemas import (
+    PlanCreate, PlanUpdate, PlanResponse, PlanDetailResponse,
+    UserResponse, BienvenidaUpdate, BienvenidaResponse
+)
+from app.dependencies import get_current_user, require_admin, get_user_roles
 from app.services import plan_service
 
 router = APIRouter(prefix="/planes", tags=["Planes de Onboarding"])
@@ -67,3 +70,29 @@ def listar_empleados_plan(
 ):
     """Lista los empleados asignados a este plan con su onboarding."""
     return plan_service.listar_empleados_plan(id_plan, current_user.empresa_id, db)
+
+# ── Bienvenida ────────────────────────────────────────────────
+ 
+@router.put("/{id_plan}/bienvenida", response_model=PlanResponse)
+def actualizar_bienvenida(
+    id_plan: int,
+    data: BienvenidaUpdate,
+    current_user: AppUser = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Actualiza el mensaje de bienvenida de un plan. Solo ADMIN_EMPRESA."""
+    return plan_service.actualizar_bienvenida(id_plan, data.mensaje_bienvenida, current_user.empresa_id, db)
+ 
+ 
+@router.get("/{id_plan}/bienvenida/{id_onboarding}", response_model=BienvenidaResponse)
+def obtener_bienvenida(
+    id_plan: int,
+    id_onboarding: int,
+    current_user: AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Retorna el mensaje de bienvenida del plan y si ya fue leído
+    por el empleado en este onboarding específico.
+    """
+    return plan_service.obtener_bienvenida(id_plan, id_onboarding, current_user.empresa_id, db)
