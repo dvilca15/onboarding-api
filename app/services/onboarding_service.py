@@ -234,6 +234,8 @@ def ver_progreso(
                     tipo             = task.tipo,
                     obligatorio      = task.obligatorio,
                     orden            = task.orden,
+                    url_contenido    = task.url_contenido,   # ← nuevo
+                    descripcion      = task.descripcion,     # ← nuevo
                 ))
             steps_con_progreso.append(StepConProgreso(
                 id_step       = step.id_step,

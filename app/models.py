@@ -64,19 +64,19 @@ class UserRole(Base):
 class OnboardingPlan(Base):
     __tablename__ = "onboarding_plan"
  
-    id_plan         = Column(Integer, primary_key=True, index=True)
-    id_empresa      = Column(Integer, ForeignKey("empresa.id_empresa"), nullable=False)
-    nombre          = Column(String(150), nullable=False)
-    descripcion     = Column(String(300))
-    es_plantilla    = Column(Boolean, nullable=False, default=False)
+    id_plan             = Column(Integer, primary_key=True, index=True)
+    id_empresa          = Column(Integer, ForeignKey("empresa.id_empresa"), nullable=False)
+    nombre              = Column(String(150), nullable=False)
+    descripcion         = Column(String(300))
+    es_plantilla        = Column(Boolean, nullable=False, default=False)
     mensaje_bienvenida  = Column(Text, nullable=True)
-    fecha_creacion  = Column(DateTime, nullable=False, default=func.now())
-    fecha_act       = Column(DateTime, nullable=False, default=func.now())
+    fecha_creacion      = Column(DateTime, nullable=False, default=func.now())
+    fecha_act           = Column(DateTime, nullable=False, default=func.now())
  
-    empresa         = relationship("Empresa", back_populates="planes")
-    steps           = relationship("OnboardingStep", back_populates="plan",
-                                   cascade="all, delete-orphan")
-    onboardings     = relationship("EmployeeOnboarding", back_populates="plan")
+    empresa             = relationship("Empresa", back_populates="planes")
+    steps               = relationship("OnboardingStep", back_populates="plan",
+                                       cascade="all, delete-orphan")
+    onboardings         = relationship("EmployeeOnboarding", back_populates="plan")
  
  
 class OnboardingStep(Base):
@@ -102,7 +102,9 @@ class Task(Base):
     id_task         = Column(Integer, primary_key=True, index=True)
     id_step         = Column(Integer, ForeignKey("onboarding_step.id_step"), nullable=False)
     titulo          = Column(String(200), nullable=False)
+    descripcion     = Column(Text, nullable=True)        # instrucciones / preguntas del formulario
     tipo            = Column(String(50), nullable=False, default="CONFIRMACION")
+    url_contenido   = Column(Text, nullable=True)        # URL del video o ruta del archivo
     obligatorio     = Column(Boolean, nullable=False, default=True)
     orden           = Column(Integer, nullable=False, default=1)
     fecha_creacion  = Column(DateTime, nullable=False, default=func.now())
@@ -110,6 +112,8 @@ class Task(Base):
  
     step            = relationship("OnboardingStep", back_populates="tasks")
     progresos       = relationship("TaskProgress", back_populates="task",
+                                   cascade="all, delete-orphan")
+    respuestas      = relationship("TaskRespuesta", back_populates="task",
                                    cascade="all, delete-orphan")
  
  
@@ -146,8 +150,21 @@ class TaskProgress(Base):
  
     onboarding              = relationship("EmployeeOnboarding", back_populates="task_progresos")
     task                    = relationship("Task", back_populates="progresos")
- 
- 
+
+
+class TaskRespuesta(Base):
+    __tablename__ = "task_respuesta"
+
+    id_respuesta        = Column(Integer, primary_key=True, index=True)
+    id_task_progress    = Column(Integer, ForeignKey("task_progress.id_task_progress"), nullable=False)
+    id_task             = Column(Integer, ForeignKey("task.id_task"), nullable=False)
+    pregunta            = Column(Text, nullable=False)
+    respuesta           = Column(Text, nullable=False)
+    fecha_creacion      = Column(DateTime, nullable=False, default=func.now())
+
+    task                = relationship("Task", back_populates="respuestas")
+
+
 class Conversation(Base):
     __tablename__ = "conversation"
  

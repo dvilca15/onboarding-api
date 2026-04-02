@@ -224,6 +224,9 @@ def actualizar_task(
         task.obligatorio = data.obligatorio
     if data.orden is not None:
         task.orden = data.orden
+    # Siempre actualizar aunque sean None — permiten limpiar el campo
+    task.descripcion   = data.descripcion
+    task.url_contenido = data.url_contenido
     db.commit()
     db.refresh(task)
     return task

@@ -65,26 +65,32 @@ class UserUpdate(BaseModel):
 # ── Task ──────────────────────────────────────────────────────
 
 class TaskCreate(BaseModel):
-    titulo:      str
-    tipo:        str = "CONFIRMACION"
-    obligatorio: bool = True
-    orden:       int = 1
+    titulo:         str
+    tipo:           str = "CONFIRMACION"
+    descripcion:    Optional[str] = None
+    url_contenido:  Optional[str] = None
+    obligatorio:    bool = True
+    orden:          int = 1
 
 class TaskUpdate(BaseModel):
-    titulo:      Optional[str]  = None
-    tipo:        Optional[str]  = None
-    obligatorio: Optional[bool] = None
-    orden:       Optional[int]  = None
+    titulo:         Optional[str]  = None
+    tipo:           Optional[str]  = None
+    descripcion:    Optional[str]  = None
+    url_contenido:  Optional[str]  = None
+    obligatorio:    Optional[bool] = None
+    orden:          Optional[int]  = None
 
 class TaskResponse(BaseModel):
     id_task:        int
     id_step:        int
     titulo:         str
     tipo:           str
+    descripcion:    Optional[str]
+    url_contenido:  Optional[str]
     obligatorio:    bool
     orden:          int
     fecha_creacion: datetime
-
+ 
     class Config:
         from_attributes = True
 
@@ -176,6 +182,8 @@ class TaskProgressConDetalle(BaseModel):
     tipo:                   str
     obligatorio:            bool
     orden:                  int
+    url_contenido:          Optional[str] = None   # ← nuevo
+    descripcion:            Optional[str] = None   # ← nuevo
 
     class Config:
         from_attributes = True
