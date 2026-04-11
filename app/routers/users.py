@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 from typing import List
+
 from app.database import get_db
 from app.models import AppUser
-from app.schemas import UserResponse, UserUpdate
+from app.schemas import UserResponse, UserUpdate, CambiarPasswordRequest
 from app.dependencies import get_current_user, require_admin, get_user_roles
 from app.services import user_service
 
@@ -13,7 +14,7 @@ router = APIRouter(prefix="/users", tags=["Usuarios"])
 @router.get("/me", response_model=UserResponse)
 def get_my_profile(
     current_user: AppUser = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Retorna el perfil del usuario autenticado con sus roles."""
     return user_service.build_user_response(current_user, db)
@@ -22,7 +23,7 @@ def get_my_profile(
 @router.get("/", response_model=List[UserResponse])
 def list_users(
     current_user: AppUser = Depends(require_admin),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Lista todos los usuarios de la empresa. Solo ADMIN_EMPRESA."""
     return user_service.listar_usuarios(current_user.empresa_id, db)
@@ -32,7 +33,7 @@ def list_users(
 def get_user(
     id_user: int,
     current_user: AppUser = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Obtiene un usuario por ID.
@@ -52,7 +53,7 @@ def update_user(
     id_user: int,
     data: UserUpdate,
     current_user: AppUser = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Actualiza un usuario. Solo actualiza los campos enviados.
@@ -71,7 +72,28 @@ def update_user(
 def delete_user(
     id_user: int,
     current_user: AppUser = Depends(require_admin),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Elimina un usuario. Solo ADMIN_EMPRESA."""
     user_service.eliminar_usuario(id_user, current_user, db)
+
+
+# ── Paso 2: cambio de contraseña con marcado de password_changed ──────────
+
+@router.put("/me/cambiar-password", response_model=UserResponse)
+def cambiar_password(
+    data: CambiarPasswordRequest,
+    current_user: AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Cambia la contraseña del usuario autenticado y marca
+    password_changed = True.
+
+    Valida que:
+    - password_actual coincida con el hash almacenado.
+    - password_nueva y password_confirmar sean iguales.
+    - password_nueva tenga al menos 6 caracteres.
+    """
+    user = user_service.cambiar_password(current_user, data, db)
+    return user_service.build_user_response(user, db)

@@ -9,6 +9,9 @@ from app.schemas import (
 )
 from app.dependencies import get_current_user, require_admin, get_user_roles
 from app.services import onboarding_service
+import os
+import shutil
+from fastapi import UploadFile, File, HTTPException
 
 router = APIRouter(prefix="/onboarding", tags=["Employee Onboarding"])
 
@@ -67,3 +70,63 @@ def eliminar_onboarding(
     """Elimina un onboarding asignado. Solo ADMIN_EMPRESA."""
     roles = get_user_roles(current_user, db)
     onboarding_service.eliminar_onboarding(id_onboarding, current_user, roles, db)
+
+@router.post("/{id_onboarding}/tasks/{id_task}/subir-entrega")
+async def subir_entrega_empleado(
+    id_onboarding: int,
+    id_task: int,
+    archivo: UploadFile = File(...),
+    current_user: AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    El empleado sube un PDF como entrega de una tarea tipo ENTREGA.
+    Guarda el archivo en static/uploads/ y actualiza url_contenido
+    en task_progress (no en task, para no afectar a otros empleados).
+    """
+    from app.models import TaskProgress, Task
+
+    roles = get_user_roles(current_user, db)
+    onboarding = db.query(EmployeeOnboarding).filter(
+        EmployeeOnboarding.id_employee_onboarding == id_onboarding
+    ).first()
+    if not onboarding:
+        raise HTTPException(status_code=404, detail="Onboarding no encontrado")
+    if onboarding.id_user != current_user.id_user and "ADMIN_EMPRESA" not in roles:
+        raise HTTPException(status_code=403, detail="Sin permiso")
+
+    task = db.query(Task).filter(Task.id_task == id_task).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Tarea no encontrada")
+    if task.tipo != "ENTREGA":
+        raise HTTPException(
+            status_code=400,
+            detail="Solo se pueden subir archivos en tareas de tipo ENTREGA"
+        )
+
+    ext = os.path.splitext(archivo.filename)[1].lower()
+    if ext not in [".pdf", ".png", ".jpg", ".jpeg"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Solo se permiten archivos PDF, PNG, JPG o JPEG"
+        )
+
+    nombre_unico = (
+        f"entrega_{id_onboarding}_{id_task}_{current_user.id_user}{ext}"
+    )
+    ruta = f"static/uploads/{nombre_unico}"
+    os.makedirs("static/uploads", exist_ok=True)
+    with open(ruta, "wb") as f:
+        shutil.copyfileobj(archivo.file, f)
+
+    task_progress = db.query(TaskProgress).filter(
+        TaskProgress.id_employee_onboarding == id_onboarding,
+        TaskProgress.id_task == id_task,
+    ).first()
+    if not task_progress:
+        raise HTTPException(status_code=404, detail="Progreso de tarea no encontrado")
+
+    task.url_contenido = f"/static/uploads/{nombre_unico}"
+    db.commit()
+
+    return {"url_contenido": f"/static/uploads/{nombre_unico}"}

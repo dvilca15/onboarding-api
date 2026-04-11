@@ -4,12 +4,13 @@ from datetime import datetime, date
 from decimal import Decimal
 from app.models import (
     AppUser, OnboardingPlan, OnboardingStep,
-    Task, EmployeeOnboarding, TaskProgress
+    Task, EmployeeOnboarding, TaskProgress, TaskRespuesta
 )
 from app.schemas import (
     AsignarPlanRequest, OnboardingResponse,
     OnboardingDetailResponse, StepConProgreso,
-    TaskProgressConDetalle, CompletarTaskRequest
+    TaskProgressConDetalle, RespuestaDetalle,
+    CompletarTaskRequest
 )
 from app.exceptions import NotFoundError, ForbiddenError, BadRequestError
 
@@ -17,10 +18,6 @@ from app.exceptions import NotFoundError, ForbiddenError, BadRequestError
 # ── Helpers ───────────────────────────────────────────────────
 
 def calcular_progreso(id_employee_onboarding: int, db: Session) -> Decimal:
-    """
-    Calcula el porcentaje de progreso basado en tasks obligatorias completadas.
-    Fórmula: (tasks obligatorias completadas / total tasks obligatorias) * 100
-    """
     onboarding = db.query(EmployeeOnboarding).filter(
         EmployeeOnboarding.id_employee_onboarding == id_employee_onboarding
     ).first()
@@ -67,7 +64,6 @@ def _verificar_acceso(
     roles: List[str],
     db: Session
 ) -> None:
-    """Verifica que el usuario tenga acceso al onboarding."""
     if "ADMIN_EMPRESA" not in roles and onboarding.id_user != current_user.id_user:
         raise ForbiddenError("No tienes permiso para acceder a este onboarding")
     empleado = db.query(AppUser).filter(AppUser.id_user == onboarding.id_user).first()
@@ -101,10 +97,6 @@ def asignar_plan(
     current_user: AppUser,
     db: Session
 ) -> OnboardingResponse:
-    """
-    Asigna un plan a un empleado y crea automáticamente
-    los registros TaskProgress para cada task del plan.
-    """
     empleado = db.query(AppUser).filter(AppUser.id_user == data.id_user).first()
     if not empleado:
         raise NotFoundError("Empleado no encontrado")
@@ -158,11 +150,6 @@ def listar_onboardings(
     roles: List[str],
     db: Session
 ) -> List[OnboardingResponse]:
-    """
-    Lista onboardings según el rol:
-    - ADMIN: ve todos los de su empresa.
-    - EMPLEADO: solo los suyos.
-    """
     query = (
         db.query(EmployeeOnboarding, AppUser.nombre, OnboardingPlan.nombre)
         .join(AppUser, AppUser.id_user == EmployeeOnboarding.id_user)
@@ -188,8 +175,9 @@ def ver_progreso(
     db: Session
 ) -> OnboardingDetailResponse:
     """
-    Retorna el detalle completo del onboarding agrupado por step,
-    con el progreso de cada task.
+    Retorna el detalle completo del onboarding agrupado por step.
+    ── Mejora A: incluye respuestas de formulario por task.
+    ── Mejora B: incluye url_contenido para tareas ENTREGA.
     """
     onboarding = (
         db.query(EmployeeOnboarding)
@@ -213,6 +201,29 @@ def ver_progreso(
         .first()
     )
 
+    # ── Mejora A: cargar todas las respuestas del onboarding de una vez ──
+    # Evita N+1: una sola query para todas las respuestas
+    task_progress_ids = [tp.id_task_progress for tp in onboarding.task_progresos]
+    respuestas_por_progress: dict[int, list[RespuestaDetalle]] = {}
+    if task_progress_ids:
+        todas_respuestas = (
+            db.query(TaskRespuesta)
+            .filter(TaskRespuesta.id_task_progress.in_(task_progress_ids))
+            .order_by(TaskRespuesta.fecha_creacion)
+            .all()
+        )
+        for r in todas_respuestas:
+            if r.id_task_progress not in respuestas_por_progress:
+                respuestas_por_progress[r.id_task_progress] = []
+            respuestas_por_progress[r.id_task_progress].append(
+                RespuestaDetalle(
+                    id_respuesta   = r.id_respuesta,
+                    pregunta       = r.pregunta,
+                    respuesta      = r.respuesta,
+                    fecha_creacion = r.fecha_creacion,
+                )
+            )
+
     steps_con_progreso = []
     if plan:
         progreso_por_task = {tp.id_task: tp for tp in onboarding.task_progresos}
@@ -224,6 +235,14 @@ def ver_progreso(
                 estado_task = tp.estado if tp else "PENDIENTE"
                 if estado_task == "COMPLETADO":
                     completadas += 1
+
+                # ── Mejora A: incluir respuestas si la task es FORMULARIO ──
+                respuestas = []
+                if tp and task.tipo == "FORMULARIO":
+                    respuestas = respuestas_por_progress.get(
+                        tp.id_task_progress, []
+                    )
+
                 tasks_del_step.append(TaskProgressConDetalle(
                     id_task_progress = tp.id_task_progress if tp else 0,
                     id_task          = task.id_task,
@@ -234,8 +253,9 @@ def ver_progreso(
                     tipo             = task.tipo,
                     obligatorio      = task.obligatorio,
                     orden            = task.orden,
-                    url_contenido    = task.url_contenido,   # ← nuevo
-                    descripcion      = task.descripcion,     # ← nuevo
+                    url_contenido    = task.url_contenido,
+                    descripcion      = task.descripcion,
+                    respuestas       = respuestas,
                 ))
             steps_con_progreso.append(StepConProgreso(
                 id_step       = step.id_step,
@@ -272,13 +292,11 @@ def completar_task(
     roles: List[str],
     db: Session
 ) -> OnboardingResponse:
-    """
-    Cambia el estado de una task y recalcula el progreso
-    del onboarding automáticamente.
-    """
     ESTADOS_VALIDOS = ["PENDIENTE", "EN_PROGRESO", "COMPLETADO", "OMITIDO"]
     if data.estado.upper() not in ESTADOS_VALIDOS:
-        raise BadRequestError(f"Estado inválido. Valores permitidos: {ESTADOS_VALIDOS}")
+        raise BadRequestError(
+            f"Estado inválido. Valores permitidos: {ESTADOS_VALIDOS}"
+        )
 
     onboarding = _get_onboarding(id_onboarding, db)
     _verificar_acceso(onboarding, current_user, roles, db)
@@ -300,23 +318,28 @@ def completar_task(
     onboarding.progreso = nuevo_progreso
 
     if nuevo_progreso >= 100:
-        onboarding.estado = "COMPLETADO"
-        fecha_hoy = datetime.now().date()
+        onboarding.estado    = "COMPLETADO"
+        fecha_hoy            = datetime.now().date()
         onboarding.fecha_fin = max(fecha_hoy, onboarding.fecha_inicio)
     elif nuevo_progreso > 0:
-        onboarding.estado = "EN_PROGRESO"
+        onboarding.estado    = "EN_PROGRESO"
         onboarding.fecha_fin = None
 
     db.commit()
     db.refresh(onboarding)
 
-    empleado = db.query(AppUser).filter(AppUser.id_user == onboarding.id_user).first()
-    plan = db.query(OnboardingPlan).filter(OnboardingPlan.id_plan == onboarding.id_plan).first()
+    empleado = db.query(AppUser).filter(
+        AppUser.id_user == onboarding.id_user
+    ).first()
+    plan = db.query(OnboardingPlan).filter(
+        OnboardingPlan.id_plan == onboarding.id_plan
+    ).first()
     return _build_onboarding_response(
         onboarding,
         empleado.nombre if empleado else "",
         plan.nombre if plan else "",
     )
+
 
 def eliminar_onboarding(
     id_onboarding: int,

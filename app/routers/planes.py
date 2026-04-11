@@ -9,6 +9,7 @@ from app.schemas import (
 )
 from app.dependencies import get_current_user, require_admin, get_user_roles
 from app.services import plan_service
+from app.models import EmployeeOnboarding
 
 router = APIRouter(prefix="/planes", tags=["Planes de Onboarding"])
 
@@ -96,3 +97,23 @@ def obtener_bienvenida(
     por el empleado en este onboarding específico.
     """
     return plan_service.obtener_bienvenida(id_plan, id_onboarding, current_user.empresa_id, db)
+
+@router.get("/{id_plan}/tiene-empleados-activos")
+def tiene_empleados_activos(
+    id_plan: int,
+    current_user: AppUser = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Retorna cuántos empleados tienen un onboarding activo (no COMPLETADO)
+    en este plan. Se usa para mostrar advertencia antes de eliminar.
+    """
+    count = (
+        db.query(EmployeeOnboarding)
+        .filter(
+            EmployeeOnboarding.id_plan == id_plan,
+            EmployeeOnboarding.estado != "COMPLETADO",
+        )
+        .count()
+    )
+    return {"count": count, "tiene_activos": count > 0}

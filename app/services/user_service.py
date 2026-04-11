@@ -4,6 +4,13 @@ from app.models import AppUser, Role, UserRole
 from app.schemas import UserUpdate, UserResponse
 from app.security import hash_password
 from app.exceptions import NotFoundError, ForbiddenError, BadRequestError
+from app.exceptions import BadRequestError
+from app.schemas import CambiarPasswordRequest
+from app.models import AppUser
+from app.security import verify_password, hash_password
+from sqlalchemy.orm import Session
+from sqlalchemy.sql import func
+from app.schemas import CambiarPasswordRequest
 
 
 def get_user_roles(user: AppUser, db: Session) -> List[str]:
@@ -24,6 +31,8 @@ def build_user_response(user: AppUser, db: Session) -> UserResponse:
         nombre         = user.nombre,
         email          = user.email,
         empresa_id     = user.empresa_id,
+        nombre_empresa    = user.empresa.nombre,
+        password_changed  = user.password_changed,
         fecha_creacion = user.fecha_creacion,
         roles          = get_user_roles(user, db),
     )
@@ -92,3 +101,32 @@ def eliminar_usuario(id_user: int, current_user: AppUser, db: Session) -> None:
 
     db.delete(user)
     db.commit()
+
+def cambiar_password(
+    current_user: AppUser,
+    data: CambiarPasswordRequest,
+    db: Session,
+) -> AppUser:
+    """
+    Valida la contraseña actual, aplica la nueva y marca
+    password_changed = True en la BD.
+    """
+    # 1. Verificar contraseña actual
+    if not verify_password(data.password_actual, current_user.password):
+        raise BadRequestError("La contraseña actual es incorrecta")
+
+    # 2. Confirmar que nueva y confirmación coincidan
+    if data.password_nueva != data.password_confirmar:
+        raise BadRequestError("Las contraseñas nuevas no coinciden")
+
+    # 3. Longitud mínima
+    if len(data.password_nueva) < 6:
+        raise BadRequestError("La contraseña debe tener al menos 6 caracteres")
+
+    # 4. Aplicar cambio
+    current_user.password = hash_password(data.password_nueva)
+    current_user.password_changed  = True
+    current_user.fecha_act         = func.now()
+    db.commit()
+    db.refresh(current_user)
+    return current_user

@@ -46,12 +46,14 @@ class TokenResponse(BaseModel):
 # ── Usuario ───────────────────────────────────────────────────
 
 class UserResponse(BaseModel):
-    id_user:        int
-    nombre:         str
-    email:          str
-    empresa_id:     int
-    fecha_creacion: datetime
-    roles:          List[str] = []
+    id_user:            int
+    nombre:             str
+    email:              str
+    empresa_id:         int
+    nombre_empresa:     str = ""
+    password_changed:   bool = False
+    fecha_creacion:     datetime
+    roles:              List[str] = []
 
     class Config:
         from_attributes = True
@@ -60,6 +62,12 @@ class UserUpdate(BaseModel):
     nombre:     Optional[str]       = None
     email:      Optional[EmailStr]  = None
     password:   Optional[str]       = None
+
+# ── Paso 2: request dedicado para cambio de contraseña ───────
+class CambiarPasswordRequest(BaseModel):
+    password_actual:    str
+    password_nueva:     str
+    password_confirmar: str
 
 
 # ── Task ──────────────────────────────────────────────────────
@@ -90,7 +98,7 @@ class TaskResponse(BaseModel):
     obligatorio:    bool
     orden:          int
     fecha_creacion: datetime
- 
+
     class Config:
         from_attributes = True
 
@@ -142,7 +150,7 @@ class PlanResponse(BaseModel):
     descripcion:    Optional[str]
     es_plantilla:   bool
     fecha_creacion: datetime
-    mensaje_bienvenida:     Optional[str] = None
+    mensaje_bienvenida: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -168,22 +176,30 @@ class TaskProgressResponse(BaseModel):
         from_attributes = True
 
 
+class RespuestaDetalle(BaseModel):
+    """Respuesta individual de un formulario."""
+    id_respuesta:   int
+    pregunta:       str
+    respuesta:      str
+    fecha_creacion: datetime
 
-# ── Task Progress con detalle del step (para vista agrupada) ──
+    class Config:
+        from_attributes = True
 
 class TaskProgressConDetalle(BaseModel):
     """Task progress enriquecido con datos de la task."""
-    id_task_progress:       int
-    id_task:                int
-    id_step:                int
-    estado:                 str
-    fecha_completada:       Optional[datetime]
-    titulo:                 str
-    tipo:                   str
-    obligatorio:            bool
-    orden:                  int
-    url_contenido:          Optional[str] = None   # ← nuevo
-    descripcion:            Optional[str] = None   # ← nuevo
+    id_task_progress:   int
+    id_task:            int
+    id_step:            int
+    estado:             str
+    fecha_completada:   Optional[datetime]
+    titulo:             str
+    tipo:               str
+    obligatorio:        bool
+    orden:              int
+    url_contenido:      Optional[str] = None
+    descripcion:        Optional[str] = None
+    respuestas:         List[RespuestaDetalle] = []
 
     class Config:
         from_attributes = True
@@ -220,7 +236,6 @@ class OnboardingResponse(BaseModel):
     fecha_inicio:           Optional[date]
     fecha_fin:              Optional[date]
     fecha_creacion:         datetime
-    # Campos enriquecidos para evitar N+1 en el frontend
     nombre_empleado:        str = ""
     nombre_plan:            str = ""
 
@@ -230,7 +245,6 @@ class OnboardingResponse(BaseModel):
 class OnboardingDetailResponse(OnboardingResponse):
     """Onboarding con el detalle completo de progreso, agrupado por step."""
     steps_con_progreso: List[StepConProgreso] = []
-    # Mantenemos task_progresses para compatibilidad con otros endpoints
     task_progresses:    List[TaskProgressResponse] = []
 
     class Config:
