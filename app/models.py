@@ -38,7 +38,6 @@ class AppUser(Base):
     nombre              = Column(String(150), nullable=False)
     email               = Column(String(150), nullable=False, unique=True)
     password            = Column(String(255), nullable=False)
-    # ── Paso 2: indica si el empleado ya cambió su contraseña inicial ──
     password_changed    = Column(Boolean, nullable=False, default=False)
     fecha_creacion      = Column(DateTime, nullable=False, default=func.now())
     fecha_act           = Column(DateTime, nullable=False, default=func.now())
@@ -101,22 +100,24 @@ class OnboardingStep(Base):
 class Task(Base):
     __tablename__ = "task"
 
-    id_task         = Column(Integer, primary_key=True, index=True)
-    id_step         = Column(Integer, ForeignKey("onboarding_step.id_step"), nullable=False)
-    titulo          = Column(String(200), nullable=False)
-    descripcion     = Column(Text, nullable=True)
-    tipo            = Column(String(50), nullable=False, default="CONFIRMACION")
-    url_contenido   = Column(Text, nullable=True)
-    obligatorio     = Column(Boolean, nullable=False, default=True)
-    orden           = Column(Integer, nullable=False, default=1)
-    fecha_creacion  = Column(DateTime, nullable=False, default=func.now())
-    fecha_act       = Column(DateTime, nullable=False, default=func.now())
+    id_task             = Column(Integer, primary_key=True, index=True)
+    id_step             = Column(Integer, ForeignKey("onboarding_step.id_step"), nullable=False)
+    titulo              = Column(String(200), nullable=False)
+    descripcion         = Column(Text, nullable=True)
+    tipo                = Column(String(50), nullable=False, default="CONFIRMACION")
+    url_contenido       = Column(Text, nullable=True)
+    obligatorio         = Column(Boolean, nullable=False, default=True)
+    orden               = Column(Integer, nullable=False, default=1)
+    # ── Entrega: el empleado debe subir un archivo firmado ──
+    requiere_entrega    = Column(Boolean, nullable=False, default=False)
+    fecha_creacion      = Column(DateTime, nullable=False, default=func.now())
+    fecha_act           = Column(DateTime, nullable=False, default=func.now())
 
-    step            = relationship("OnboardingStep", back_populates="tasks")
-    progresos       = relationship("TaskProgress", back_populates="task",
-                                   cascade="all, delete-orphan")
-    respuestas      = relationship("TaskRespuesta", back_populates="task",
-                                   cascade="all, delete-orphan")
+    step                = relationship("OnboardingStep", back_populates="tasks")
+    progresos           = relationship("TaskProgress", back_populates="task",
+                                       cascade="all, delete-orphan")
+    respuestas          = relationship("TaskRespuesta", back_populates="task",
+                                       cascade="all, delete-orphan")
 
 
 class EmployeeOnboarding(Base):
@@ -148,6 +149,8 @@ class TaskProgress(Base):
     id_task                 = Column(Integer, ForeignKey("task.id_task"), nullable=False)
     estado                  = Column(String(50), nullable=False, default="PENDIENTE")
     fecha_completada        = Column(DateTime)
+    # ── Entrega del empleado (separado del archivo del admin) ──
+    url_entrega             = Column(Text, nullable=True)
     fecha_act               = Column(DateTime, nullable=False, default=func.now())
 
     onboarding              = relationship("EmployeeOnboarding", back_populates="task_progresos")

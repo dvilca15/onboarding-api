@@ -255,6 +255,8 @@ def ver_progreso(
                     orden            = task.orden,
                     url_contenido    = task.url_contenido,
                     descripcion      = task.descripcion,
+                    requiere_entrega = task.requiere_entrega,       
+                    url_entrega      = tp.url_entrega if tp else None,
                     respuestas       = respuestas,
                 ))
             steps_con_progreso.append(StepConProgreso(
