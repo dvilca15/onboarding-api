@@ -29,7 +29,8 @@ def calcular_progreso(id_employee_onboarding: int, db: Session) -> Decimal:
         .join(OnboardingStep, OnboardingStep.id_step == Task.id_step)
         .filter(
             OnboardingStep.id_plan == onboarding.id_plan,
-            Task.obligatorio == True
+            Task.obligatorio == True,
+            Task.tipo != "BIENVENIDA"
         )
         .count()
     )
@@ -42,7 +43,8 @@ def calcular_progreso(id_employee_onboarding: int, db: Session) -> Decimal:
         .filter(
             TaskProgress.id_employee_onboarding == id_employee_onboarding,
             TaskProgress.estado == "COMPLETADO",
-            Task.obligatorio == True
+            Task.obligatorio == True,
+            Task.tipo != "BIENVENIDA"
         )
         .count()
     )
@@ -130,7 +132,10 @@ def asignar_plan(
     tasks = (
         db.query(Task)
         .join(OnboardingStep, OnboardingStep.id_step == Task.id_step)
-        .filter(OnboardingStep.id_plan == data.id_plan)
+        .filter(
+            OnboardingStep.id_plan == data.id_plan,
+            Task.tipo != "BIENVENIDA"
+        )
         .all()
     )
     for task in tasks:
@@ -174,11 +179,6 @@ def ver_progreso(
     roles: List[str],
     db: Session
 ) -> OnboardingDetailResponse:
-    """
-    Retorna el detalle completo del onboarding agrupado por step.
-    ── Mejora A: incluye respuestas de formulario por task.
-    ── Mejora B: incluye url_contenido para tareas ENTREGA.
-    """
     onboarding = (
         db.query(EmployeeOnboarding)
         .options(
@@ -201,8 +201,6 @@ def ver_progreso(
         .first()
     )
 
-    # ── Mejora A: cargar todas las respuestas del onboarding de una vez ──
-    # Evita N+1: una sola query para todas las respuestas
     task_progress_ids = [tp.id_task_progress for tp in onboarding.task_progresos]
     respuestas_por_progress: dict[int, list[RespuestaDetalle]] = {}
     if task_progress_ids:
@@ -228,15 +226,18 @@ def ver_progreso(
     if plan:
         progreso_por_task = {tp.id_task: tp for tp in onboarding.task_progresos}
         for step in sorted(plan.steps, key=lambda s: s.orden):
+            if step.titulo == '__BIENVENIDA__':
+                continue
             tasks_del_step = []
             completadas = 0
             for task in sorted(step.tasks, key=lambda t: t.orden):
+                if task.tipo == 'BIENVENIDA':
+                    continue
                 tp = progreso_por_task.get(task.id_task)
                 estado_task = tp.estado if tp else "PENDIENTE"
                 if estado_task == "COMPLETADO":
                     completadas += 1
 
-                # ── Mejora A: incluir respuestas si la task es FORMULARIO ──
                 respuestas = []
                 if tp and task.tipo == "FORMULARIO":
                     respuestas = respuestas_por_progress.get(
@@ -255,7 +256,7 @@ def ver_progreso(
                     orden            = task.orden,
                     url_contenido    = task.url_contenido,
                     descripcion      = task.descripcion,
-                    requiere_entrega = task.requiere_entrega,       
+                    requiere_entrega = task.requiere_entrega,
                     url_entrega      = tp.url_entrega if tp else None,
                     respuestas       = respuestas,
                 ))
