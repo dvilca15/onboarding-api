@@ -11,6 +11,8 @@ from app.services.chat_service import (
 )
 from app.schemas import PlanResponse
 from pydantic import BaseModel
+from app.models import Conversation, Message
+from app.services.chat_service import cargar_historial_bd
 
 router = APIRouter(prefix="/chat", tags=["Chat IA"])
 
@@ -38,7 +40,14 @@ class AdminMensajeResponse(BaseModel):
     plan: Optional[dict] = None
 
 class CrearPlanRequest(BaseModel):
-    sugerencia: dict  # el objeto "plan" que devolvió la IA
+    sugerencia: dict
+
+class MensajeHistorialResponse(BaseModel):
+    rol: str
+    contenido: str
+
+class HistorialEmpleadoResponse(BaseModel):
+    mensajes: List[MensajeHistorialResponse]
 
 
 # ── Endpoints ─────────────────────────────────────────────────
@@ -99,3 +108,29 @@ async def chat_empleado(
         db=db,
     )
     return ChatEmpleadoResponse(texto=texto)
+
+@router.get("/empleado/historial/{id_onboarding}",
+            response_model=HistorialEmpleadoResponse)
+def obtener_historial_empleado(
+    id_onboarding: int,
+    current_user: AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Devuelve el historial de mensajes para que el frontend los cargue al abrir el chat."""
+    conv = db.query(Conversation).filter(
+        Conversation.id_employee_onboarding == id_onboarding
+    ).first()
+    if not conv:
+        return HistorialEmpleadoResponse(mensajes=[])
+
+    mensajes = db.query(Message).filter(
+        Message.id_conversation == conv.id_conversation
+    ).order_by(Message.fecha_envio).all()
+
+    return HistorialEmpleadoResponse(mensajes=[
+        MensajeHistorialResponse(
+            rol="user" if m.sender_type == "USER" else "bot",
+            contenido=m.contenido,
+        )
+        for m in mensajes
+    ])
