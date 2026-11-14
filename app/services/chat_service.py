@@ -8,7 +8,7 @@ from app.models import OnboardingPlan, OnboardingStep, Task, AppUser
 from app.exceptions import BadRequestError, ForbiddenError
 
 logger = logging.getLogger("onboarding.chat")
-from app.models import EmployeeOnboarding, TaskProgress
+from app.models import EmployeeOnboarding, TaskProgress, Conversation, Message
 
 SYSTEM_PROMPT_ADMIN = """
 Eres un asistente especializado EXCLUSIVAMENTE en crear planes de onboarding para Mipymes peruanas de servicios.
@@ -638,7 +638,8 @@ async def chat_empleado_mensaje(
     # se completa con la última pregunta del usuario para no perder el tema.
     consulta = mensaje
     if len(mensaje) < 40:
-        previos = [m["content"] for m in historial if m.get("role") == "user"]
+        previos = [m["content"] for m in cargar_historial_bd(id_onboarding, db, limite=6)
+                   if m.get("role") == "user"]
         if previos:
             consulta = f"{previos[-1]} {mensaje}"
     try:
@@ -650,14 +651,17 @@ async def chat_empleado_mensaje(
         fragmentos = []
 
     system_prompt = _system_prompt_empleado(contexto, _bloque_documentos(fragmentos))
-    messages = historial + [{"role": "user", "content": mensaje}]
+    # El historial se carga de la BD (ya verificamos arriba que el onboarding es del
+    # usuario). Así persiste entre sesiones y el cliente no puede inyectar mensajes.
+    historial_bd = cargar_historial_bd(id_onboarding, db, limite=20)
+    messages = historial_bd + [{"role": "user", "content": mensaje}]
 
     try:
         respuesta = await llamar_ia(
             system_prompt=system_prompt,
             messages=messages,
         )
-    except Exception as e:
+    except Exception:
         raise BadRequestError("No se pudo contactar al asistente de IA, inténtalo más tarde")
 
     texto = respuesta.strip()
@@ -667,6 +671,7 @@ async def chat_empleado_mensaje(
     if _dice_no_encontrado(texto) or not fuentes:
         fuentes = []
         texto = re.sub(r"\s*\[\d{1,2}\]", "", texto)
+    guardar_mensajes(id_onboarding, mensaje, texto, db)
     return {"texto": texto, "fuentes": fuentes}
 
 
@@ -695,3 +700,61 @@ def _fuentes_citadas(texto: str, fragmentos: list[dict]) -> list[dict]:
             "extracto": extracto[:220] + ("…" if len(extracto) > 220 else ""),
         })
     return fuentes
+
+
+
+# ── Historial persistente del chat del empleado ───────────────
+
+def obtener_o_crear_conversacion(id_onboarding: int, db: Session) -> Conversation:
+    """Obtiene la conversación existente o crea una nueva para el onboarding."""
+    conv = db.query(Conversation).filter(
+        Conversation.id_employee_onboarding == id_onboarding
+    ).first()
+    if not conv:
+        conv = Conversation(id_employee_onboarding=id_onboarding)
+        db.add(conv)
+        db.commit()
+        db.refresh(conv)
+    return conv
+
+
+def cargar_historial_bd(id_onboarding: int, db: Session, limite: int | None = None) -> list:
+    """Historial guardado, en el formato que espera la IA. `limite` = últimos N mensajes."""
+    conv = db.query(Conversation).filter(
+        Conversation.id_employee_onboarding == id_onboarding
+    ).first()
+    if not conv:
+        return []
+    mensajes = db.query(Message).filter(
+        Message.id_conversation == conv.id_conversation
+    ).order_by(Message.fecha_envio, Message.id_message).all()
+    if limite:
+        mensajes = mensajes[-limite:]
+    return [
+        {
+            "role": "user" if m.sender_type == "USER" else "assistant",
+            "content": m.contenido,
+        }
+        for m in mensajes
+    ]
+
+
+def guardar_mensajes(
+    id_onboarding: int,
+    mensaje_usuario: str,
+    respuesta_bot: str,
+    db: Session,
+) -> None:
+    """Guarda el par usuario/bot en la tabla message."""
+    conv = obtener_o_crear_conversacion(id_onboarding, db)
+    db.add(Message(
+        id_conversation=conv.id_conversation,
+        sender_type="USER",
+        contenido=mensaje_usuario,
+    ))
+    db.add(Message(
+        id_conversation=conv.id_conversation,
+        sender_type="BOT",
+        contenido=respuesta_bot,
+    ))
+    db.commit()

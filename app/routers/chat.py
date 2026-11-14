@@ -10,6 +10,8 @@ from app.services.chat_service import (
     chat_admin_mensaje, crear_plan_desde_sugerencia, chat_empleado_mensaje
 )
 from app.schemas import PlanResponse
+from app.models import Conversation, Message, EmployeeOnboarding
+from app.exceptions import ForbiddenError, NotFoundError
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/chat", tags=["Chat IA"])
@@ -46,6 +48,13 @@ class AdminMensajeResponse(BaseModel):
 
 class CrearPlanRequest(BaseModel):
     sugerencia: dict  # el objeto "plan" que devolvió la IA
+
+class MensajeHistorialResponse(BaseModel):
+    rol: str
+    contenido: str
+
+class HistorialEmpleadoResponse(BaseModel):
+    mensajes: List[MensajeHistorialResponse]
 
 
 # ── Endpoints ─────────────────────────────────────────────────
@@ -111,3 +120,37 @@ async def chat_empleado(
     return ChatEmpleadoResponse(
         texto=resultado["texto"], fuentes=resultado["fuentes"]
     )
+
+
+@router.get("/empleado/historial/{id_onboarding}",
+            response_model=HistorialEmpleadoResponse)
+def obtener_historial_empleado(
+    id_onboarding: int,
+    current_user: AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Mensajes guardados del chat, para cargarlos al abrirlo. Solo el dueño del onboarding."""
+    onboarding = db.query(EmployeeOnboarding).filter(
+        EmployeeOnboarding.id_employee_onboarding == id_onboarding
+    ).first()
+    if not onboarding:
+        raise NotFoundError("Onboarding no encontrado")
+    if onboarding.id_user != current_user.id_user:
+        raise ForbiddenError("Este onboarding no es tuyo")
+
+    conv = db.query(Conversation).filter(
+        Conversation.id_employee_onboarding == id_onboarding
+    ).first()
+    if not conv:
+        return HistorialEmpleadoResponse(mensajes=[])
+
+    mensajes = db.query(Message).filter(
+        Message.id_conversation == conv.id_conversation
+    ).order_by(Message.fecha_envio, Message.id_message).all()
+    return HistorialEmpleadoResponse(mensajes=[
+        MensajeHistorialResponse(
+            rol="user" if m.sender_type == "USER" else "bot",
+            contenido=m.contenido,
+        )
+        for m in mensajes
+    ])
