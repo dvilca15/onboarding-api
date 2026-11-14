@@ -82,7 +82,12 @@ def actualizar_usuario(
     if data.nombre is not None:
         user.nombre = data.nombre
     if data.password is not None:
+        if len(data.password) < 6:
+            raise BadRequestError("La contraseña debe tener al menos 6 caracteres")
         user.password = hash_password(data.password)
+        # reseteo por admin: el usuario debe elegir una nueva al entrar
+        if user.id_user != current_user.id_user:
+            user.password_changed = False
 
     db.commit()
     db.refresh(user)

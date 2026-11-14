@@ -155,6 +155,8 @@ class PlanResponse(BaseModel):
     es_plantilla:   bool
     fecha_creacion: datetime
     mensaje_bienvenida: Optional[str] = None
+    # Solo al crear un plan con IA: cuántos documentos se adjuntaron solos
+    documentos_adjuntados: int = 0
 
     class Config:
         from_attributes = True
@@ -221,6 +223,8 @@ class StepConProgreso(BaseModel):
     tasks:          List[TaskProgressConDetalle] = []
     total_tasks:    int = 0
     completadas:    int = 0
+    bloqueada:      bool = False             # el empleado aún no puede avanzar aquí
+    bloqueada_por:  Optional[str] = None     # título de la etapa que debe superar antes
 
     class Config:
         from_attributes = True

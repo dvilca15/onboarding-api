@@ -64,6 +64,13 @@ def update_user(
     if "ADMIN_EMPRESA" not in roles and current_user.id_user != id_user:
         from app.exceptions import ForbiddenError
         raise ForbiddenError("Solo puedes modificar tu propio perfil")
+    es_admin = "ADMIN_EMPRESA" in roles
+    if not es_admin and (data.email is not None or data.password is not None):
+        from app.exceptions import ForbiddenError
+        raise ForbiddenError(
+            "Solo un administrador puede cambiar el email o la contraseña. "
+            "Para tu contraseña usa /users/me/cambiar-password"
+        )
     user = user_service.actualizar_usuario(id_user, data, current_user, db)
     return user_service.build_user_response(user, db)
 

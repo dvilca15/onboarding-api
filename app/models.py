@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Numeric, Date
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Numeric, Date, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
@@ -179,7 +179,8 @@ class Conversation(Base):
     fecha_act               = Column(DateTime, nullable=False, default=func.now())
 
     onboarding              = relationship("EmployeeOnboarding", back_populates="conversacion")
-    mensajes                = relationship("Message", back_populates="conversacion")
+    mensajes        = relationship("Message", back_populates="conversacion",
+                                   cascade="all, delete-orphan")
 
 
 class Message(Base):
@@ -192,3 +193,41 @@ class Message(Base):
     fecha_envio     = Column(DateTime, nullable=False, default=func.now())
 
     conversacion    = relationship("Conversation", back_populates="mensajes")
+
+
+class DocumentoConocimiento(Base):
+    """Documento de la base de conocimiento de una empresa (para el RAG)."""
+    __tablename__ = "documento_conocimiento"
+
+    id_documento    = Column(Integer, primary_key=True, index=True)
+    id_empresa      = Column(Integer, ForeignKey("empresa.id_empresa"), nullable=False, index=True)
+    nombre          = Column(String(200), nullable=False)
+    nombre_archivo  = Column(String(255), nullable=False)
+    tipo            = Column(String(10), nullable=False)          # pdf | txt | md
+    num_fragmentos  = Column(Integer, nullable=False, default=0)
+    num_caracteres  = Column(Integer, nullable=False, default=0)
+    # Archivo original guardado en static/uploads (permite adjuntarlo a tareas)
+    url_archivo     = Column(Text, nullable=True)
+    fecha_creacion  = Column(DateTime, nullable=False, default=func.now())
+
+    fragmentos      = relationship("FragmentoConocimiento", back_populates="documento",
+                                   cascade="all, delete-orphan")
+
+    @property
+    def tiene_archivo(self) -> bool:
+        return bool(self.url_archivo)
+
+
+class FragmentoConocimiento(Base):
+    """Trozo de texto de un documento, con su vector (embedding) para buscar por significado."""
+    __tablename__ = "fragmento_conocimiento"
+
+    id_fragmento    = Column(Integer, primary_key=True, index=True)
+    id_documento    = Column(Integer, ForeignKey("documento_conocimiento.id_documento"), nullable=False, index=True)
+    # Se repite aquí para filtrar por empresa sin joins: el aislamiento entre empresas es crítico
+    id_empresa      = Column(Integer, ForeignKey("empresa.id_empresa"), nullable=False, index=True)
+    orden           = Column(Integer, nullable=False, default=0)
+    texto           = Column(Text, nullable=False)
+    embedding       = Column(JSON, nullable=False)
+
+    documento       = relationship("DocumentoConocimiento", back_populates="fragmentos")

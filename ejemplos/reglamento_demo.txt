@@ -1,0 +1,22 @@
+REGLAMENTO INTERNO DE TRABAJO - HUNTER PERU SAC (documento de ejemplo)
+
+CAPITULO 1. JORNADA Y HORARIO
+La jornada laboral ordinaria es de 48 horas semanales, de lunes a viernes, de 9:00 a.m. a 6:00 p.m., con una hora de refrigerio entre las 1:00 p.m. y las 2:00 p.m. El refrigerio no forma parte de la jornada. El personal debe registrar su ingreso y salida en el sistema de asistencia biometrico. Se otorga una tolerancia de 10 minutos por dia; superado ese margen, el tiempo se considera tardanza y se descuenta de la remuneracion.
+
+CAPITULO 2. VACACIONES Y LICENCIAS
+Todo trabajador tiene derecho a 30 dias calendario de vacaciones remuneradas por cada ano completo de servicios. Las vacaciones se programan de comun acuerdo con la jefatura inmediata y deben solicitarse con al menos 30 dias de anticipacion mediante el formato de solicitud de vacaciones. Se puede fraccionar el descanso en periodos no menores de 7 dias. Las licencias por fallecimiento de un familiar directo son de 5 dias calendario con goce de haber. La licencia por paternidad es de 10 dias calendario consecutivos.
+
+CAPITULO 3. REMUNERACIONES Y PAGOS
+El pago de la remuneracion mensual se efectua el ultimo dia habil de cada mes mediante deposito en la cuenta de ahorros del trabajador. Las gratificaciones legales se pagan en julio y diciembre. La compensacion por tiempo de servicios (CTS) se deposita en mayo y noviembre. Las boletas de pago se envian al correo corporativo.
+
+CAPITULO 4. SEGURIDAD DE LA INFORMACION
+Esta prohibido compartir contrasenas o credenciales de acceso. Los equipos de computo deben bloquearse al ausentarse del puesto. Los documentos con informacion confidencial no pueden enviarse a correos personales. Todo incidente de seguridad, como perdida de equipo o correos sospechosos, debe reportarse de inmediato al area de TI al correo soporte@hunter.pe. El uso de USB personales requiere autorizacion previa de TI.
+
+CAPITULO 5. TRABAJO REMOTO
+El trabajo remoto se autoriza hasta dos dias por semana para los puestos que lo permitan, previa aprobacion de la jefatura. Durante el trabajo remoto se debe estar disponible en el horario laboral y conectado a la VPN corporativa. La empresa entrega una laptop y no reembolsa gastos de internet.
+
+CAPITULO 6. CODIGO DE CONDUCTA Y VESTIMENTA
+Se exige un trato respetuoso entre companeros y con los clientes. El hostigamiento sexual y la discriminacion son faltas graves. La vestimenta es formal casual de lunes a jueves y casual los viernes. Para reuniones con clientes se requiere vestimenta formal.
+
+CAPITULO 7. BENEFICIOS
+La empresa ofrece seguro de salud EPS con cobertura del 80 por ciento para el trabajador, un bono de movilidad de 150 soles mensuales y capacitaciones anuales financiadas hasta un monto de 1500 soles por trabajador. El dia de cumpleanos es libre.

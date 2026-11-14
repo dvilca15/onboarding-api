@@ -10,6 +10,9 @@ SECRET_KEY                  = os.getenv("SECRET_KEY")
 ALGORITHM                   = os.getenv("ALGORITHM")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60))
 
+if not SECRET_KEY or not ALGORITHM:
+    raise RuntimeError("Faltan SECRET_KEY y/o ALGORITHM en el .env")
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
@@ -32,5 +35,5 @@ def verify_token(token: str) -> dict:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload
-    except JWTError:
+    except (JWTError, ValueError):
         return None

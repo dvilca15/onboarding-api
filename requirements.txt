@@ -1,0 +1,15 @@
+bcrypt==4.0.1
+email-validator==2.3.0
+fastapi==0.135.1
+httpx==0.28.1
+passlib==1.7.4
+psycopg2-binary==2.9.11
+pydantic==2.12.5
+pydantic_core==2.41.5
+python-dotenv==1.2.2
+python-jose==3.5.0
+python-multipart==0.0.22
+SQLAlchemy==2.0.48
+uvicorn==0.42.0
+pypdf==7.1.0
+pytest==9.2.0

@@ -10,7 +10,7 @@ from app.schemas import (
 from app.dependencies import get_current_user, require_admin, get_user_roles
 from app.services import onboarding_service
 import os
-import shutil
+import uuid
 from fastapi import UploadFile, File, HTTPException
 
 
@@ -85,8 +85,6 @@ async def subir_entrega_empleado(
     de tipo DOCUMENTO con requiere_entrega=True.
     Se guarda en url_entrega del TaskProgress (no toca la task original).
     """
-    import os, shutil
-
     # Verificar que el onboarding pertenece al empleado
     onboarding = db.query(EmployeeOnboarding).filter(
         EmployeeOnboarding.id_employee_onboarding == id_onboarding
@@ -94,9 +92,11 @@ async def subir_entrega_empleado(
     if not onboarding:
         raise HTTPException(status_code=404, detail="Onboarding no encontrado")
 
-    roles = get_user_roles(current_user, db)
-    if onboarding.id_user != current_user.id_user and "ADMIN_EMPRESA" not in roles:
+    if onboarding.id_user != current_user.id_user:
         raise HTTPException(status_code=403, detail="Sin permiso")
+    onboarding_service._verificar_acceso(
+        onboarding, current_user, get_user_roles(current_user, db), db
+    )
 
     # Verificar que la tarea existe y requiere entrega
     from app.models import Task as TaskModel
@@ -109,6 +109,8 @@ async def subir_entrega_empleado(
             detail="Esta tarea no requiere entrega del empleado"
         )
 
+    onboarding_service.exigir_etapa_desbloqueada(onboarding, id_task, db)
+
     # Verificar extensión
     ext = os.path.splitext(archivo.filename or "")[1].lower()
     if ext not in {".pdf", ".png", ".jpg", ".jpeg"}:
@@ -117,16 +119,10 @@ async def subir_entrega_empleado(
             detail="Solo se permiten archivos PDF, PNG o JPG"
         )
 
-    # Guardar archivo con nombre único por empleado+tarea
-    nombre = f"entrega_{id_onboarding}_{id_task}_{current_user.id_user}{ext}"
-    ruta = f"static/uploads/{nombre}"
-    os.makedirs("static/uploads", exist_ok=True)
-
     contenido = await archivo.read()
-    with open(ruta, "wb") as f:
-        f.write(contenido)
+    if len(contenido) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="El archivo supera el límite de 10MB")
 
-    # Guardar en url_entrega del TaskProgress (no en la task)
     from app.models import TaskProgress as TP
     tp = db.query(TP).filter(
         TP.id_employee_onboarding == id_onboarding,
@@ -134,6 +130,17 @@ async def subir_entrega_empleado(
     ).first()
     if not tp:
         raise HTTPException(status_code=404, detail="Progreso no encontrado")
+
+    # Nombre aleatorio (no adivinable) y limpieza de la entrega anterior
+    nombre = f"entrega_{uuid.uuid4().hex}{ext}"
+    ruta = f"static/uploads/{nombre}"
+    os.makedirs("static/uploads", exist_ok=True)
+    with open(ruta, "wb") as f:
+        f.write(contenido)
+    if tp.url_entrega:
+        anterior = tp.url_entrega.lstrip("/")
+        if anterior.startswith("static/uploads/") and os.path.exists(anterior):
+            os.remove(anterior)
 
     tp.url_entrega = f"/static/uploads/{nombre}"
     db.commit()

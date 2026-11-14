@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session, joinedload
-from typing import List
+from typing import List, Optional
 from datetime import datetime, date
 from decimal import Decimal
 from app.models import (
@@ -16,6 +16,66 @@ from app.exceptions import NotFoundError, ForbiddenError, BadRequestError
 
 
 # ── Helpers ───────────────────────────────────────────────────
+
+# ── Etapas secuenciales ───────────────────────────────────────
+# Una etapa se "supera" cuando todas sus tareas OBLIGATORIAS están
+# COMPLETADAS (u OMITIDAS por el admin). Las opcionales no bloquean.
+ESTADOS_SUPERADOS = ("COMPLETADO", "OMITIDO")
+ETAPA_BIENVENIDA = "__BIENVENIDA__"
+
+
+def _etapa_pendiente(step: OnboardingStep, estado_por_task: dict) -> bool:
+    """True si la etapa tiene alguna tarea obligatoria sin superar."""
+    return any(
+        t.obligatorio and t.tipo != "BIENVENIDA"
+        and estado_por_task.get(t.id_task, "PENDIENTE") not in ESTADOS_SUPERADOS
+        for t in step.tasks
+    )
+
+
+def etapa_bloqueante(
+    onboarding: EmployeeOnboarding, id_task: int, db: Session
+) -> Optional[OnboardingStep]:
+    """Devuelve la etapa anterior sin superar que impide trabajar en `id_task`,
+    o None si el empleado puede avanzar en esa tarea."""
+    task = db.query(Task).filter(Task.id_task == id_task).first()
+    if not task or task.tipo == "BIENVENIDA":
+        return None
+
+    steps = (
+        db.query(OnboardingStep)
+        .options(joinedload(OnboardingStep.tasks))
+        .filter(OnboardingStep.id_plan == onboarding.id_plan)
+        .order_by(OnboardingStep.orden, OnboardingStep.id_step)
+        .all()
+    )
+    estado_por_task = {
+        tp.id_task: tp.estado
+        for tp in db.query(TaskProgress).filter(
+            TaskProgress.id_employee_onboarding == onboarding.id_employee_onboarding
+        )
+    }
+    for step in steps:
+        if step.titulo == ETAPA_BIENVENIDA:
+            continue
+        if step.id_step == task.id_step:
+            return None                      # llegamos a su etapa sin bloqueos
+        if _etapa_pendiente(step, estado_por_task):
+            return step
+    return None
+
+
+def exigir_etapa_desbloqueada(
+    onboarding: EmployeeOnboarding, id_task: int, db: Session
+) -> None:
+    """Lanza 400 si la tarea pertenece a una etapa todavía bloqueada."""
+    bloqueante = etapa_bloqueante(onboarding, id_task, db)
+    if bloqueante is not None:
+        raise BadRequestError(
+            f"Etapa bloqueada: primero debes completar la etapa "
+            f"«{bloqueante.titulo}»."
+        )
+
 
 def calcular_progreso(id_employee_onboarding: int, db: Session) -> Decimal:
     onboarding = db.query(EmployeeOnboarding).filter(
@@ -225,7 +285,8 @@ def ver_progreso(
     steps_con_progreso = []
     if plan:
         progreso_por_task = {tp.id_task: tp for tp in onboarding.task_progresos}
-        for step in sorted(plan.steps, key=lambda s: s.orden):
+        bloqueante: Optional[str] = None   # título de la 1.ª etapa sin superar
+        for step in sorted(plan.steps, key=lambda s: (s.orden, s.id_step)):
             if step.titulo == '__BIENVENIDA__':
                 continue
             tasks_del_step = []
@@ -269,7 +330,14 @@ def ver_progreso(
                 tasks         = tasks_del_step,
                 total_tasks   = len(tasks_del_step),
                 completadas   = completadas,
+                bloqueada     = bloqueante is not None,
+                bloqueada_por = bloqueante,
             ))
+            if bloqueante is None and any(
+                t.obligatorio and t.estado not in ESTADOS_SUPERADOS
+                for t in tasks_del_step
+            ):
+                bloqueante = step.titulo
 
     return OnboardingDetailResponse(
         id_employee_onboarding = onboarding.id_employee_onboarding,
@@ -311,6 +379,21 @@ def completar_task(
     if not task_progress:
         raise NotFoundError("Task no encontrada en este onboarding")
 
+    es_admin = "ADMIN_EMPRESA" in roles
+    if not es_admin and data.estado.upper() in ("COMPLETADO", "EN_PROGRESO"):
+        exigir_etapa_desbloqueada(onboarding, id_task, db)
+
+    if data.estado.upper() == "COMPLETADO" and not es_admin:
+        task = db.query(Task).filter(Task.id_task == id_task).first()
+        if task and task.requiere_entrega and not task_progress.url_entrega:
+            raise BadRequestError("Debes subir tu entrega antes de completar esta tarea")
+        if task and task.tipo == "FORMULARIO":
+            hay = db.query(TaskRespuesta).filter(
+                TaskRespuesta.id_task_progress == task_progress.id_task_progress
+            ).first()
+            if not hay:
+                raise BadRequestError("Debes responder el formulario para completar esta tarea")
+
     task_progress.estado = data.estado.upper()
     task_progress.fecha_completada = (
         datetime.now() if data.estado.upper() == "COMPLETADO" else None
@@ -326,6 +409,9 @@ def completar_task(
         onboarding.fecha_fin = max(fecha_hoy, onboarding.fecha_inicio)
     elif nuevo_progreso > 0:
         onboarding.estado    = "EN_PROGRESO"
+        onboarding.fecha_fin = None
+    else:
+        onboarding.estado    = "PENDIENTE"
         onboarding.fecha_fin = None
 
     db.commit()

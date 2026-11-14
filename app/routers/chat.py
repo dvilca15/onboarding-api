@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from typing import List, Optional
-from pydantic import BaseModel
+from typing import List, Optional, Literal
+from pydantic import BaseModel, Field
 
 from app.database import get_db
 from app.models import AppUser
@@ -17,25 +17,32 @@ router = APIRouter(prefix="/chat", tags=["Chat IA"])
 
 # ── Schemas ───────────────────────────────────────────────────
 
+class MensajeHistorial(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(max_length=4000)
+
 class ChatEmpleadoRequest(BaseModel):
-    mensaje:        str
-    historial:      list = []
+    mensaje:        str = Field(max_length=2000)
+    historial:      List[MensajeHistorial] = Field(default=[], max_length=30)
     id_onboarding:  int
- 
+
+class FuenteChat(BaseModel):
+    numero: int
+    documento: str
+    extracto: str
+
 class ChatEmpleadoResponse(BaseModel):
     texto: str
-
-class MensajeHistorial(BaseModel):
-    role: str   # "user" | "assistant"
-    content: str
+    fuentes: List[FuenteChat] = []
 
 class AdminMensajeRequest(BaseModel):
-    mensaje: str
-    historial: List[MensajeHistorial] = []
+    mensaje: str = Field(max_length=2000)
+    historial: List[MensajeHistorial] = Field(default=[], max_length=30)
 
 class AdminMensajeResponse(BaseModel):
     texto: str
     plan: Optional[dict] = None
+    fuentes: List[FuenteChat] = []
 
 class CrearPlanRequest(BaseModel):
     sugerencia: dict  # el objeto "plan" que devolvió la IA
@@ -57,10 +64,13 @@ async def admin_mensaje(
     resultado = await chat_admin_mensaje(
         mensaje=data.mensaje,
         historial=historial,
+        empresa_id=current_user.empresa_id,
+        db=db,
     )
     return AdminMensajeResponse(
         texto=resultado.get("texto", ""),
         plan=resultado.get("plan"),
+        fuentes=resultado.get("fuentes", []),
     )
 
 
@@ -91,11 +101,13 @@ async def chat_empleado(
     """
     Chat del empleado — responde preguntas sobre su onboarding con contexto real.
     """
-    texto = await chat_empleado_mensaje(
+    resultado = await chat_empleado_mensaje(
         mensaje=data.mensaje,
-        historial=data.historial,
+        historial=[{"role": m.role, "content": m.content} for m in data.historial],
         id_onboarding=data.id_onboarding,
         current_user=current_user,
         db=db,
     )
-    return ChatEmpleadoResponse(texto=texto)
+    return ChatEmpleadoResponse(
+        texto=resultado["texto"], fuentes=resultado["fuentes"]
+    )

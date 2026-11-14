@@ -12,6 +12,10 @@ from app.models import AppUser, Task, TaskProgress, TaskRespuesta
 from app.schemas import TaskCreate, TaskUpdate, TaskResponse
 from app.dependencies import get_current_user, require_admin
 from app.services import plan_service
+from app.services.onboarding_service import (
+    _get_onboarding, _verificar_acceso, exigir_etapa_desbloqueada,
+)
+from app.dependencies import get_user_roles
 from app.exceptions import NotFoundError, BadRequestError
 
 router = APIRouter(prefix="/steps/{id_step}/tasks", tags=["Tasks"])
@@ -112,16 +116,14 @@ async def subir_archivo_task(
         )
 
     # Obtener task y verificar que sea DOCUMENTO
-    task = db.query(Task).filter(Task.id_task == id_task).first()
-    if not task:
-        raise HTTPException(status_code=404, detail="Task no encontrada")
+    task = plan_service._get_task(id_task, id_step, current_user.empresa_id, db)
     if task.tipo != "DOCUMENTO":
         raise HTTPException(status_code=400, detail="Solo tasks de tipo DOCUMENTO admiten archivos")
 
     # Eliminar archivo anterior si existe
     if task.url_contenido:
         ruta_anterior = task.url_contenido.lstrip("/")
-        if os.path.exists(ruta_anterior):
+        if ruta_anterior.startswith("static/uploads/") and os.path.exists(ruta_anterior):
             os.remove(ruta_anterior)
 
     # Guardar nuevo archivo con nombre único
@@ -151,11 +153,11 @@ def actualizar_url_task(
     Guarda la URL del video para una task de tipo VIDEO.
     Solo ADMIN_EMPRESA.
     """
-    task = db.query(Task).filter(Task.id_task == id_task).first()
-    if not task:
-        raise HTTPException(status_code=404, detail="Task no encontrada")
+    task = plan_service._get_task(id_task, id_step, current_user.empresa_id, db)
     if task.tipo != "VIDEO":
         raise HTTPException(status_code=400, detail="Solo tasks de tipo VIDEO admiten URL")
+    if not url.lower().startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="La URL debe empezar por http:// o https://")
 
     task.url_contenido = url
     db.commit()
@@ -178,9 +180,7 @@ def actualizar_preguntas_formulario(
     preguntas: JSON string, ej: ["¿Cuál es tu área?", "¿Tienes experiencia previa?"]
     Solo ADMIN_EMPRESA.
     """
-    task = db.query(Task).filter(Task.id_task == id_task).first()
-    if not task:
-        raise HTTPException(status_code=404, detail="Task no encontrada")
+    task = plan_service._get_task(id_task, id_step, current_user.empresa_id, db)
     if task.tipo != "FORMULARIO":
         raise HTTPException(status_code=400, detail="Solo tasks de tipo FORMULARIO admiten preguntas")
 
@@ -205,11 +205,17 @@ def enviar_respuestas_formulario(
     El empleado envía sus respuestas al formulario.
     Guarda las respuestas y marca la task como COMPLETADO.
     """
+    onboarding = _get_onboarding(id_onboarding, db)
+    if onboarding.id_user != current_user.id_user:
+        raise HTTPException(status_code=403, detail="Este onboarding no es tuyo")
+    _verificar_acceso(onboarding, current_user, get_user_roles(current_user, db), db)
+
     task = db.query(Task).filter(Task.id_task == id_task).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task no encontrada")
     if task.tipo != "FORMULARIO":
         raise HTTPException(status_code=400, detail="Esta task no es un formulario")
+    exigir_etapa_desbloqueada(onboarding, id_task, db)
 
     tp = db.query(TaskProgress).filter(
         TaskProgress.id_employee_onboarding == id_onboarding,
@@ -218,7 +224,10 @@ def enviar_respuestas_formulario(
     if not tp:
         raise HTTPException(status_code=404, detail="Progreso no encontrado")
 
-    # Guardar respuestas
+    # Reemplazar respuestas previas (evita duplicados al reenviar)
+    db.query(TaskRespuesta).filter(
+        TaskRespuesta.id_task_progress == tp.id_task_progress
+    ).delete()
     for r in data.respuestas:
         db.add(TaskRespuesta(
             id_task_progress=tp.id_task_progress,
@@ -250,6 +259,9 @@ def ver_respuestas_formulario(
     El admin ve las respuestas del empleado a un formulario.
     Solo ADMIN_EMPRESA.
     """
+    onboarding = _get_onboarding(id_onboarding, db)
+    _verificar_acceso(onboarding, current_user, get_user_roles(current_user, db), db)
+
     tp = db.query(TaskProgress).filter(
         TaskProgress.id_employee_onboarding == id_onboarding,
         TaskProgress.id_task == id_task,
